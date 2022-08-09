@@ -372,21 +372,26 @@ bool ContextPomdp::Step(State &state_, double rNum, int action, double &reward,
 
 	state.time_stamp = state.time_stamp + 1.0 / ModelParams::CONTROL_FREQ;
 
-	if (use_gamma_in_search) {
-		// Attentive pedestrians
-		world_model.GammaAgentStep(state.agents, rNum, state.num, state.car);
-		for (int i = 0; i < state.num; i++) {
-			//Distracted pedestrians
-			if (state.agents[i].mode == AGENT_DIS)
-				world_model.AgentStep(state.agents[i], rNum);
-		}
-	} else {
-		for (int i = 0; i < state.num; i++) {
-			world_model.AgentStep(state.agents[i], rNum);
-			if(isnan(state.agents[i].pos.x))
-				ERR("state.agents[i].pos.x is NAN");
-		}
-	}
+//	if (use_gamma_in_search) {
+//		// Attentive pedestrians
+//		world_model.GammaAgentStep(state.agents, rNum, state.num, state.car);
+//		for (int i = 0; i < state.num; i++) {
+//			//Distracted pedestrians
+//			if (state.agents[i].mode == AGENT_DIS)
+//				world_model.AgentStep(state.agents[i], rNum);
+//		}
+//	} else {
+//		for (int i = 0; i < state.num; i++) {
+//			world_model.AgentStep(state.agents[i], rNum);
+//			if(isnan(state.agents[i].pos.x))
+//				ERR("state.agents[i].pos.x is NAN");
+//		}
+//	}
+    for (int i = 0; i < state.num; i++) {
+        world_model.PhongAgentStep(state.agents[i], rNum);
+        if(isnan(state.agents[i].pos.x))
+        ERR("state.agents[i].pos.x is NAN");
+    }
 
 	if (CPUDoPrint && state.scenario_id == CPUPrintPID) {
 		if (true) {
