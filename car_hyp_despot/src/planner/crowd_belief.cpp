@@ -77,19 +77,48 @@ double TransitionLikelihood(const COORD& past_pos, const COORD& cur_pos, const C
 void HiddenStateBelief::Update(WorldModel& model, AgentStruct& past_agent, const AgentStruct& cur_agent,
 		int intention_id, int mode_id) {
 
-	AgentStruct predicted_agent = past_agent;
-	if (past_agent.type == AGENT_ATT)
-		model.GammaAgentStep(predicted_agent, intention_id);
-	else
-		model.AgentStepPath(predicted_agent);
+    AgentStruct predicted_agent = past_agent;
 
-	double likelihood = TransitionLikelihood(past_agent.pos, cur_agent.pos, predicted_agent.pos);
+    if (ModelParams::PHONG_DEBUG) {
+        logi << "[PHONG] HiddenStateBelief::Update 1 Step before" << endl;
+        logi << "HSB::Update before pred_agent: id: " << &predicted_agent << " ";
+        predicted_agent.PhongAgentText(cout);
+        logi << "HSB::Update before past_agent: " << &past_agent << " ";
+        past_agent.PhongAgentText(cout);
+        logi << "HSB::Update before cur_agent: "<< &cur_agent << " ";
+        const_cast<AgentStruct &>(cur_agent).PhongAgentText(cout);
+    }
+
+//	if (past_agent.type == AGENT_ATT)
+//		model.GammaAgentStep(predicted_agent, intention_id);
+//	else
+//		model.AgentStepPath(predicted_agent);
+
+    model.PhongAgentStep(predicted_agent, 0.2);
+
+    if (ModelParams::PHONG_DEBUG)
+        logi << "[PHONG] HiddenStateBelief::Update 2 Finding likelihood" << endl;
+
+    double likelihood = TransitionLikelihood(past_agent.pos, cur_agent.pos, predicted_agent.pos);
 
 	probs_[mode_id][intention_id] = likelihood * probs_[mode_id][intention_id];
+
+    if (ModelParams::PHONG_DEBUG) {
+        logi << "[PHONG] HiddenStateBelief::Update 1 Step after" << endl;
+        logi << "HSB::Update after pred_agent: ";
+        predicted_agent.PhongAgentText(cout);
+        logi << "HSB::Update after past_agent: ";
+        past_agent.PhongAgentText(cout);
+        logi << "HSB::Update after cur_agent: ";
+        const_cast<AgentStruct &>(cur_agent).PhongAgentText(cout);
+    }
 }
 
 void HiddenStateBelief::Normalize() {
-	double total_prob = 0;
+    if (ModelParams::PHONG_DEBUG)
+        logi << "[PHONG] HiddenStateBelief::Normalize" << endl;
+
+    double total_prob = 0;
 	for (auto& intention_probs: probs_) {
 		total_prob += std::accumulate(intention_probs.begin(), intention_probs.end(), 0.0);
 	}
