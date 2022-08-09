@@ -173,11 +173,43 @@ State* WorldSimulator::GetCurrentState() {
 		logi << "[GetCurrentState] path topic not ready yet..." << endl;
 		return NULL;
 	}
+    logi << "[PHONG] WorldSimulator::GetCurrentState 1.a - Done spinning:" << endl;
 
 	PomdpStateWorld state;
-	current_state_.car = car_;
+
+    CoordHistory currHistory = current_state_.car.coordHistory;
+    currHistory.Add(car_.pos);
+    current_state_.car = car_;
+    current_state_.car.coordHistory = currHistory;
+
 	int n = 0;
 	std::map<double, AgentStruct&> sorted_agents = GetSortedAgents();
+
+    // For motion prediction
+    // Step 1. For each sorted_agents, add its position to its history
+    // This is to prevent the case that in the beginning, there is no agent
+    // in current_state_, so if we do not do this step, the first history will
+    // be ignored
+    for (auto it = sorted_agents.begin();
+         it != sorted_agents.end(); ++it) {
+        AgentStruct &sortedAgent = it->second;
+        sortedAgent.coordHistory.Add(sortedAgent.pos);
+    }
+    // Step 2. For each sorted_agents, find this agent in current_state_
+    // If exists, we add history to the sorted_agent
+    for (auto it = sorted_agents.begin();
+         it != sorted_agents.end(); ++it) {
+        AgentStruct &initAgent = it->second;
+        for (int i = 0; i < current_state_.num; i++) {
+            AgentStruct & currAgent = current_state_.agents[i];
+            if (initAgent.id == currAgent.id) {
+                initAgent.coordHistory = currAgent.coordHistory;
+                initAgent.coordHistory.Add(initAgent.pos);
+                break;
+            }
+        }
+    }
+
 	for (auto it = sorted_agents.begin();
 			it != sorted_agents.end(); ++it) {
 		current_state_.agents[n] = it->second;
@@ -188,17 +220,23 @@ State* WorldSimulator::GetCurrentState() {
 	current_state_.num = n;
 	current_state_.time_stamp = min(car_time_stamp_, agents_time_stamp_);
 
-	if (logging::level() >= logging::DEBUG) {
+    logi << "[PHONG] WorldSimulator::GetCurrentState 1.b - Printing states:" << endl;
+
+    if (logging::level() >= logging::DEBUG) {
 		logi << "current world state:" << endl;
 		static_cast<ContextPomdp*>(model_)->PrintWorldState(current_state_);
 	}
 	logi << " current state time stamp " << current_state_.time_stamp << endl;
+
+    logi << "[PHONG] Print Updated State in WorldSimulator::GetCurrentState()" << endl;
+    current_state_.PomdpStateWorldText(cout);
 
 	return static_cast<State*>(&current_state_);
 }
 
 double WorldSimulator::StepReward(PomdpStateWorld& state, ACT_TYPE action) {
 	double reward = 0.0;
+    logi << "[PHONG] WorldSimulator::StepReward" << endl;
 
 	if (worldModel.IsGlobalGoal(state.car)) {
 		reward = ModelParams::GOAL_REWARD;
