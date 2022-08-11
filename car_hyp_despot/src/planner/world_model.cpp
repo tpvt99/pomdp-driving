@@ -49,6 +49,41 @@ WorldModel::WorldModel() :
 	if (DESPOT::Debug_mode)
 		ModelParams::NOISE_GOAL_ANGLE = 0.000001;
 	init_time = Time::now();
+
+    cout << "WorldModel::WorldModel Init once" << endl;
+    Py_Initialize();
+    PyRun_SimpleString("import sys");//--It is equivalent to the import sys statement in python, sys is to deal with the interpreter
+    PyRun_SimpleString("sys.path.append('/home/cunjun/p3_catkin_ws/src/tinhte')"); //Specify the directory where pytest.py is located
+    // First set in path where to find your custom python module.
+    // You have to tell the path otherwise the next line will try to load
+    // your module from the path where Python's system modules/packages are
+    // found.
+    PyObject *sys_path = PySys_GetObject("path");
+    int i = PyList_Append(sys_path, PyBytes_FromString("/home/cunjun/p3_catkin_ws/src/tinhte"));
+
+
+    ///pName = PyBytes_FromString("tinhte");
+    pModule = PyImport_ImportModule("xxxaaa");
+
+
+    if (pModule == nullptr)
+    {
+        PyRun_SimpleString("print 'PyImport_Import error xxx!' ");
+        cout << "WorldModel::WorldModel PyImport_Import error xxx" << endl;
+    }
+    pFunc= PyObject_GetAttrString(pModule, "morecomplicated");
+
+    if (pFunc == nullptr)
+    {
+        PyRun_SimpleString("print 'PyImport_Import error morecomplicated!' ");
+        cout << "WorldModel::WorldModel PyImport_Import error morecomplicated" << endl;
+    }
+
+//    if (! PyEval_ThreadsInitialized()) {
+//        PyEval_InitThreads();
+//    }
+
+
 }
 
 WorldModel::~WorldModel() {
@@ -205,10 +240,126 @@ void WorldModel::GammaAgentStep(AgentStruct agents[], double& random,
 			}
 		}
 	}
+
+}
+
+void WorldModel::PhongAgentStep(AgentStruct &agent, double& random) {
+    if (ModelParams::PHONG_DEBUG) {
+        logi << "[PHONG] WorldModel::PhongAgentStep  ";
+        if (pFunc == NULL) {
+            logi << "[PHONG] WorldModel::PhongAgentStep  Failxxx";
+        }
+    }
+
+    double noise = sqrt(-2 * log(random));
+    if (FIX_SCENARIO != 1 && !CPUDoPrint) {
+        random = QuickRandom::RandGeneration(random);
+    }
+
+    noise *= cos(2 * M_PI * random) * ModelParams::NOISE_GOAL_ANGLE;
+
+    // Just a custom function for future motion prediction step
+    if (noise != 0) {
+        double a = agent.vel.GetAngle();
+        a += noise;
+        COORD move(a, 1 * agent.vel.Length() / freq, 0);
+        agent.pos.x += move.x;
+        agent.pos.y += move.y;
+    } else {
+        agent.pos.x += agent.vel.x * (float(1) / freq);
+        agent.pos.y += agent.vel.y * (float(1) / freq);
+    }
+
+    // Add the history to the agent
+    //agent.coordHistory.Add(COORD(agent.pos.x, agent.pos.y));
+
+
+    //pybind11::object xxx = pybind11::module_::import("os");
+//    pybind11::print(xxx.attr("getcwd")());
+//    pybind11::print("[PHONG] - ");
+//
+//    pybind11::scoped_ostream_redirect stream(
+//            std::cout,                               // std::ostream&
+////    pybind11::module_::import("os").attr("getcwd")() // Python output
+//    );
+
+    if (ModelParams::PHONG_DEBUG) {
+        logi << "[PHONG] WorldModel::PhongAgentStep  ";
+        CallPythonMethod1(agent);
+    }
+}
+
+void WorldModel::CallPythonMethod1(AgentStruct &agent) {
+    // Using threads protection
+    PyGILState_STATE gstate;
+    gstate = PyGILState_Ensure();
+
+    // Building arguments
+    int predicted_agent_id = agent.id;
+    // Building each agent position in format 'id': {'x':[], 'y':[]}
+    // I create a fake list here, if you have a list, please adjust the below line:
+    AgentStruct agentlist[] = {agent, agent};
+    PyObject * agentDict = PyDict_New();
+
+    if (!agentDict) {
+        cout << "Unable to allocate memory for Python dict" << endl;
+        throw logic_error("Unable to allocate memory for Python dict");
+    }
+
+//    for (const AgentStruct &tempAgent : agentlist) {
+//        std::vector<COORD> hist = tempAgent.coordHistory.coord_history;
+//        PyObject * listx = PyList_New(hist.size());
+//        if (!listx) {
+//            cout << "Unable to allocate memory for Python list" << endl;
+//            throw logic_error("Unable to allocate memory for Python list");
+//        }
+//        PyObject * listy = PyList_New(hist.size());
+//        if (!listy) {
+//            throw logic_error("Unable to allocate memory for Python list");
+//        }
+//        for (unsigned int i = 0; i < hist.size()) {
+//            PyObject *x_pos = PyFloat_fromDouble((double) hist[i].x);
+//            if (!x_pos) {
+//                Py_DECREF(listx);
+//                Py_DECREF(listy);
+//                throw logic_error("Unable to allocated memory for python x.pos")
+//            }
+//            PyObject *y_pos = PyFloat_fromDouble((double) hist[i].y);
+//            if (!y_pos) {
+//                Py_DECREF(listx);
+//                Py_DECREF(listy);
+//                throw logic_error("Unable to allocated memory for python y.pos")
+//            }
+//            PyList_SetItem(listx, i, x_pos);
+//            PyList_SetItem(listy, i, y_pos);
+//        }
+//
+//        PyObject *info_dict = Py_BuildValue("{s:O,s:O}", 'x', x_pos, 'y', y_pos);
+//        pyDict_SetItem(agentDict, PyLong_FromLong(<static_cast>(long)(tempAgent.id)), info_dict);
+//    }
+
+    PyObject *args = Py_BuildValue("(i,O)", predicted_agent_id, agentDict);
+
+    PyObject *result = PyEval_CallObject(pFunc, args);
+    //Py_XINCREF(pFunc);
+
+    double hihi = PyFloat_AsDouble(result);
+    cout << "WorldModel::WM: " << hihi << endl;
+
+    Py_XDECREF(result);
+    Py_XDECREF(args);
+    Py_XDECREF(agentDict);
+
+    PyGILState_Release(gstate);
 }
 
 void WorldModel::AgentStepCurVel(AgentStruct& agent, int step, double noise) {
-	if (noise != 0) {
+    if (ModelParams::PHONG_DEBUG) {
+        logi << "[PHONG] WorldModel::AgentStepCurVel [b] agent info before: ";
+        agent.PhongAgentText(cout);
+    }
+
+    if (noise != 0) {
 		double a = agent.vel.GetAngle();
 		a += noise;
 		COORD move(a, step * agent.vel.Length() / freq, 0);

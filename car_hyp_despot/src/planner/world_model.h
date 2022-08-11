@@ -32,10 +32,21 @@ public:
 			double in_front_angle_deg = -1) const;
 	int MinStepToGoal(const PomdpState& state);
 
+    // For calling python from c++
+    PyObject *pName;
+    PyObject *pModule;
+    PyObject *pFunc;
+
+
 public:
 	// step function elements
 	void AgentStep(AgentStruct &ped, Random& random);
 	void AgentStep(AgentStruct &ped, double& random);
+
+    void CallPythonMethod1(AgentStruct &agent);
+    void CallPythonMethod2();
+
+    void PhongAgentStep(AgentStruct &agent, double& random);
 
 	void GammaAgentStep(AgentStruct peds[], double& random, int num_ped,
 			CarStruct car); //pedestrian also need to consider car when moving
