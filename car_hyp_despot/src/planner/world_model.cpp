@@ -11,6 +11,11 @@
 #include "path.h"
 #include "world_model.h"
 #include "context_pomdp.h"
+#include "msg_builder/MopedData.h"
+
+//#include <pybind11/pybind11.h>
+//#include <pybind11/iostream.h>
+#include <Python.h>
 
 #undef LOG
 #define LOG(lv) \
@@ -28,6 +33,10 @@ int include_curvel_intention = 1;
 bool initial_update_step = true;
 double PURSUIT_LEN = 3.0;
 
+//
+//PyObject *WorldModel::pName;
+//PyObject *WorldModel::pModule;
+//PyObject *WorldModel::pFunc;
 
 int ClosestInt(double v) {
 	if ((v - (int) v) < 0.5)
