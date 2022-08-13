@@ -372,26 +372,39 @@ bool ContextPomdp::Step(State &state_, double rNum, int action, double &reward,
 
 	state.time_stamp = state.time_stamp + 1.0 / ModelParams::CONTROL_FREQ;
 
-//	if (use_gamma_in_search) {
-//		// Attentive pedestrians
-//		world_model.GammaAgentStep(state.agents, rNum, state.num, state.car);
-//		for (int i = 0; i < state.num; i++) {
-//			//Distracted pedestrians
-//			if (state.agents[i].mode == AGENT_DIS)
-//				world_model.AgentStep(state.agents[i], rNum);
-//		}
-//	} else {
-//		for (int i = 0; i < state.num; i++) {
-//			world_model.AgentStep(state.agents[i], rNum);
-//			if(isnan(state.agents[i].pos.x))
-//				ERR("state.agents[i].pos.x is NAN");
-//		}
-//	}
-    for (int i = 0; i < state.num; i++) {
-        world_model.PhongAgentStep(state.agents[i], rNum);
-        if(isnan(state.agents[i].pos.x))
-        ERR("state.agents[i].pos.x is NAN");
+    if (MopedParams::USE_MOPED) {
+        if (MopedParams::PHONG_DEBUG)
+            logi << "[PHONG] Number of states: " << state.num << endl;
+
+        // Build neighbor agents
+        std::vector<AgentStruct> neigborAgents;
+        for (int i = 0; i < state.num; i++) {
+            neigborAgents.push_back(state.agents[i]);
+        }
+
+        for (int i = 0; i < state.num; i++) {
+            world_model.PhongAgentStep(state.agents[i], rNum, neigborAgents);
+            if(isnan(state.agents[i].pos.x))
+            ERR("state.agents[i].pos.x is NAN");
+        }
+    } else {
+        if (use_gamma_in_search) {
+            // Attentive pedestrians
+            world_model.GammaAgentStep(state.agents, rNum, state.num, state.car);
+            for (int i = 0; i < state.num; i++) {
+                //Distracted pedestrians
+                if (state.agents[i].mode == AGENT_DIS)
+                    world_model.AgentStep(state.agents[i], rNum);
+		    }
+        } else {
+            for (int i = 0; i < state.num; i++) {
+                world_model.AgentStep(state.agents[i], rNum);
+                if(isnan(state.agents[i].pos.x))
+                    ERR("state.agents[i].pos.x is NAN");
+            }
+	    }
     }
+
 
 	if (CPUDoPrint && state.scenario_id == CPUPrintPID) {
 		if (true) {
@@ -450,23 +463,35 @@ bool ContextPomdp::Step(PomdpStateWorld &state, double rNum, int action,
 	world_model.RobStep(state.car, steering, random);
 	world_model.RobVelStep(state.car, acc, random);
 
-	if (use_gamma_in_simulation) {
-		// Attentive pedestrians
-		double zero_rand = 0.0;
-		world_model.GammaAgentStep(state.agents, zero_rand, state.num, state.car);
-		// Distracted pedestrians
-		for (int i = 0; i < state.num; i++) {
-			if (state.agents[i].mode == AGENT_DIS)
-				world_model.AgentStep(state.agents[i], random);
-		}
-	} else {
-		for (int i = 0; i < state.num; i++)
-			world_model.AgentStep(state.agents[i], random);
-	}
+    if (MopedParams::USE_MOPED) {
+        if (MopedParams::PHONG_DEBUG)
+            logi << "[PHONG] Number of states: " << state.num << endl;
+
+        for (int i = 0; i < state.num; i++) {
+            world_model.PhongAgentStep(state.agents[i], rNum);
+            if(isnan(state.agents[i].pos.x))
+            ERR("state.agents[i].pos.x is NAN");
+        }
+    } else {
+        if (use_gamma_in_simulation) {
+            // Attentive pedestrians
+            double zero_rand = 0.0;
+            world_model.GammaAgentStep(state.agents, zero_rand, state.num, state.car);
+            // Distracted pedestrians
+            for (int i = 0; i < state.num; i++) {
+                if (state.agents[i].mode == AGENT_DIS)
+                    world_model.AgentStep(state.agents[i], random);
+            }
+        } else {
+            for (int i = 0; i < state.num; i++)
+                world_model.AgentStep(state.agents[i], random);
+        }
+    }
 	return false;
 }
 
 void ContextPomdp::ForwardAndVisualize(const State *sample, int step) const {
+    // sample won't change
 	PomdpState *next_state = static_cast<PomdpState *>(Copy(sample));
 
 	for (int i = 0; i < step; i++) {
