@@ -280,34 +280,53 @@ void WorldModel::PhongAgentStep(AgentStruct &agent, double& random) {
     }
 
     // Add the history to the agent
-    //agent.coordHistory.Add(COORD(agent.pos.x, agent.pos.y));
+    agent.coordHistory.Add(COORD(agent.pos.x, agent.pos.y));
 
-
-    //pybind11::object xxx = pybind11::module_::import("os");
-//    pybind11::print(xxx.attr("getcwd")());
-//    pybind11::print("[PHONG] - ");
-//
-//    pybind11::scoped_ostream_redirect stream(
-//            std::cout,                               // std::ostream&
-////    pybind11::module_::import("os").attr("getcwd")() // Python output
-//    );
-
-    if (ModelParams::PHONG_DEBUG) {
-        logi << "[PHONG] WorldModel::PhongAgentStep  ";
-        CallPythonMethod1(agent);
-    }
+    //CallPython(agent);
 }
 
-void WorldModel::CallPythonMethod1(AgentStruct &agent) {
+void WorldModel::PhongAgentStep(AgentStruct &agent, double& random,
+                                std::vector<AgentStruct> neighborAgents) {
+    if (MopedParams::PHONG_DEBUG) {
+        logi << "[PHONG] WorldModel::PhongAgentStep with neighbors  " << endl;
+    }
+
+    double noise = sqrt(-2 * log(random));
+    if (FIX_SCENARIO != 1 && !CPUDoPrint) {
+        random = QuickRandom::RandGeneration(random);
+    }
+
+    noise *= cos(2 * M_PI * random) * ModelParams::NOISE_GOAL_ANGLE;
+
+    // Just a custom function for future motion prediction step
+    if (noise != 0) {
+        double a = agent.vel.GetAngle();
+        a += noise;
+        COORD move(a, 1 * agent.vel.Length() / freq, 0);
+        agent.pos.x += move.x;
+        agent.pos.y += move.y;
+    } else {
+        agent.pos.x += agent.vel.x * (float(1) / freq);
+        agent.pos.y += agent.vel.y * (float(1) / freq);
+    }
+
+    // Add the history to the agent
+    agent.coordHistory.Add(COORD(agent.pos.x, agent.pos.y));
+
+    CallPythonMethodWithNeighborAgents(agent, neighborAgents);
+}
+
+void WorldModel::CallPythonMethodWithNeighborAgents(AgentStruct &agent, std::vector<AgentStruct> neighborAgents){
     // Using threads protection
     PyGILState_STATE gstate;
     gstate = PyGILState_Ensure();
 
+    if (MopedParams::PHONG_DEBUG) {
+        logi << "[PHONG] WorldModel::CallPythonMethodWithNeighborAgents" << endl;
+    }
+
     // Building arguments
     int predicted_agent_id = agent.id;
-    // Building each agent position in format 'id': {'x':[], 'y':[]}
-    // I create a fake list here, if you have a list, please adjust the below line:
-    AgentStruct agentlist[] = {agent, agent};
     PyObject * agentDict = PyDict_New();
 
     if (!agentDict) {
@@ -315,45 +334,61 @@ void WorldModel::CallPythonMethod1(AgentStruct &agent) {
         throw logic_error("Unable to allocate memory for Python dict");
     }
 
-//    for (const AgentStruct &tempAgent : agentlist) {
-//        std::vector<COORD> hist = tempAgent.coordHistory.coord_history;
-//        PyObject * listx = PyList_New(hist.size());
-//        if (!listx) {
-//            cout << "Unable to allocate memory for Python list" << endl;
-//            throw logic_error("Unable to allocate memory for Python list");
-//        }
-//        PyObject * listy = PyList_New(hist.size());
-//        if (!listy) {
-//            throw logic_error("Unable to allocate memory for Python list");
-//        }
-//        for (unsigned int i = 0; i < hist.size()) {
-//            PyObject *x_pos = PyFloat_fromDouble((double) hist[i].x);
-//            if (!x_pos) {
-//                Py_DECREF(listx);
-//                Py_DECREF(listy);
-//                throw logic_error("Unable to allocated memory for python x.pos")
-//            }
-//            PyObject *y_pos = PyFloat_fromDouble((double) hist[i].y);
-//            if (!y_pos) {
-//                Py_DECREF(listx);
-//                Py_DECREF(listy);
-//                throw logic_error("Unable to allocated memory for python y.pos")
-//            }
-//            PyList_SetItem(listx, i, x_pos);
-//            PyList_SetItem(listy, i, y_pos);
-//        }
-//
-//        PyObject *info_dict = Py_BuildValue("{s:O,s:O}", 'x', x_pos, 'y', y_pos);
-//        pyDict_SetItem(agentDict, PyLong_FromLong(<static_cast>(long)(tempAgent.id)), info_dict);
-//    }
+    for (const AgentStruct &tempAgent : neighborAgents) {
+        std::vector<COORD> hist = tempAgent.coordHistory.coord_history;
+        PyObject * listx = PyList_New(hist.size());
+        if (!listx) {
+            cout << "Unable to allocate memory for Python list" << endl;
+            throw logic_error("Unable to allocate memory for Python list");
+        }
+        PyObject * listy = PyList_New(hist.size());
+        if (!listy) {
+            throw logic_error("Unable to allocate memory for Python list");
+        }
+        for (unsigned int i = 0; i < hist.size(); i++) {
+            PyObject *x_pos = PyFloat_FromDouble(hist[i].x);
+            if (!x_pos) {
+                Py_DECREF(listx);
+                Py_DECREF(listy);
+                throw logic_error("Unable to allocated memory for python x.pos");
+            }
+            PyObject *y_pos = PyFloat_FromDouble(hist[i].y);
+            if (!y_pos) {
+                Py_DECREF(listx);
+                Py_DECREF(listy);
+                throw logic_error("Unable to allocated memory for python y.pos");
+            }
+            PyList_SetItem(listx, i, x_pos);
+            PyList_SetItem(listy, i, y_pos);
+        }
+        //PyObject *agentType = PyLong_FromLong(tempAgent.type);
+
+        PyObject *info_dict = Py_BuildValue("{s:O,s:O}", "x", listx, "y", listy);
+        PyDict_SetItem(agentDict, PyLong_FromLong(tempAgent.id), info_dict);
+
+//        Py_DECREF(agentType);
+//        Py_DECREF(info_dict);
+//        Py_DECREF(listx);
+//        Py_DECREF(listy);
+    }
 
     PyObject *args = Py_BuildValue("(i,O)", predicted_agent_id, agentDict);
-
     PyObject *result = PyEval_CallObject(pFunc, args);
-    //Py_XINCREF(pFunc);
 
-    double hihi = PyFloat_AsDouble(result);
-    cout << "WorldModel::WM: " << hihi << endl;
+    double probability = PyFloat_AsDouble(PyTuple_GetItem(result, 0));
+    PyObject *predicted_x = PyTuple_GetItem(result, 1);
+    PyObject *predicted_y = PyTuple_GetItem(result, 2);
+
+//    cout << "WorldModel::WM: probability: " << probability << endl;
+//    cout << "WorldModel::WM: x: ";
+//    for (auto i = 0; i < PyList_Size(predicted_x); i++) {
+//        cout << PyFloat_AsDouble(PyList_GetItem(predicted_x, i)) << " ";
+//    }
+//    cout << " --- y: ";
+//    for (auto i = 0; i < PyList_Size(predicted_y); i++) {
+//        cout << PyFloat_AsDouble(PyList_GetItem(predicted_y, i)) << " ";
+//    }
+//    cout << endl;
 
     Py_XDECREF(result);
     Py_XDECREF(args);

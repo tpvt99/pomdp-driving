@@ -7,9 +7,9 @@
 #include <msg_builder/LaneSeg.h>
 #include <geometry_msgs/Polygon.h>
 #include "despot/core/prior.h"
+#include <Python.h>
 
 using namespace despot;
-
 
 class WorldModel {
 public:
@@ -43,12 +43,14 @@ public:
 	void AgentStep(AgentStruct &ped, Random& random);
 	void AgentStep(AgentStruct &ped, double& random);
 
-    void CallPythonMethod1(AgentStruct &agent);
-    void CallPythonMethod2();
+    void CallPythonMethod(AgentStruct &agent);
+    void CallPythonMethodWithNeighborAgents(AgentStruct &agent, std::vector<AgentStruct> neighborAgents);
 
     void PhongAgentStep(AgentStruct &agent, double& random);
+    void PhongAgentStep(AgentStruct &agent, double& random, std::vector<AgentStruct> neighborAgents);
 
-	void GammaAgentStep(AgentStruct peds[], double& random, int num_ped,
+
+    void GammaAgentStep(AgentStruct peds[], double& random, int num_ped,
 			CarStruct car); //pedestrian also need to consider car when moving
 	void GammaAgentStep(AgentStruct& agent, int intention_id);
 	void AgentStepCurVel(AgentStruct& ped, int step = 1, double noise = 0.0);
