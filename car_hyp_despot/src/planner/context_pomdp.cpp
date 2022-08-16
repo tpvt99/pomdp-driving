@@ -28,6 +28,11 @@
 #include "world_model.h"
 #include "context_pomdp.h"
 #include "simulator_base.h"
+#include "moped_param.h"
+
+#include <Python.h>
+#include "moped_utils.h"
+
 
 using namespace despot;
 
@@ -377,17 +382,40 @@ bool ContextPomdp::Step(State &state_, double rNum, int action, double &reward,
             logi << "[PHONG] Number of states: " << state.num << endl;
 
         // Build neighbor agents
-        std::vector<AgentStruct> neigborAgents;
+        auto start_t = Time::now();
+
+        std::vector<AgentStruct> neighborAgents;
         for (int i = 0; i < state.num; i++) {
-            neigborAgents.push_back(state.agents[i]);
+            neighborAgents.push_back(state.agents[i]);
+        }
+
+        PyGILState_STATE gstate = PyGILState_Ensure();
+        PyObject *object = MopedUtils::buildAgentList(neighborAgents);
+        PyObject *pyOutput = world_model.CallPythonMethod(object);
+
+        if (MopedParams::PHONG_DEBUG) {
+            logi << "[Phong] ContextPomdp::Step 123 buildAgent Time: " << Globals::ElapsedTime(start_t) << endl;
+            logi << "[Phong] ContextPomdp::Step 123 buildAgent obj->ref: " <<
+                object->ob_refcnt << "pyOut->ref: " << pyOutput->ob_refcnt << endl;
+
         }
 
         for (int i = 0; i < state.num; i++) {
-            world_model.PhongAgentStep(state.agents[i], rNum, neigborAgents);
+            world_model.PhongAgentStep(state.agents[i], rNum, pyOutput);
             if(isnan(state.agents[i].pos.x))
             ERR("state.agents[i].pos.x is NAN");
         }
+
+        if (MopedParams::PHONG_DEBUG) {
+            logi << "[Phong] ContextPomdp::Step 123 All MopedPred Time: " << Globals::ElapsedTime(start_t) << " agents_length: " << state.num << endl;
+            logi << "[Phong] ContextPomdp::Step 123 buildAgent obj->ref: " <<
+                 object->ob_refcnt << "pyOut->ref: " << pyOutput->ob_refcnt << endl;
+        }
+        PyGILState_Release(gstate);
+
     } else {
+        auto start_t = Time::now();
+
         if (use_gamma_in_search) {
             // Attentive pedestrians
             world_model.GammaAgentStep(state.agents, rNum, state.num, state.car);

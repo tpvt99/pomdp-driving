@@ -295,90 +295,59 @@ void WorldModel::PhongAgentStep(AgentStruct &agent, double& random,
     if (FIX_SCENARIO != 1 && !CPUDoPrint) {
         random = QuickRandom::RandGeneration(random);
     }
-
     noise *= cos(2 * M_PI * random) * ModelParams::NOISE_GOAL_ANGLE;
 
-    // Just a custom function for future motion prediction step
-    if (noise != 0) {
-        double a = agent.vel.GetAngle();
-        a += noise;
-        COORD move(a, 1 * agent.vel.Length() / freq, 0);
-        agent.pos.x += move.x;
-        agent.pos.y += move.y;
-    } else {
-        agent.pos.x += agent.vel.x * (float(1) / freq);
-        agent.pos.y += agent.vel.y * (float(1) / freq);
+    if (goal_mode == "cur_vel") {
+        AgentStepCurVel(agent, 1, noise);
+    } else if (goal_mode == "path") {
+        AgentStepPath(agent, 1, noise);
     }
 
     // Add the history to the agent
     agent.coordHistory.Add(COORD(agent.pos.x, agent.pos.y));
 
-    CallPythonMethodWithNeighborAgents(agent, neighborAgents);
+    // Extract information
+    PyObject *dictKeys = PyDict_Keys(object);
+
+    for (int i = 0; i < PyList_Size(dictKeys); i++) {
+        PyObject *key = PyList_GetItem(dictKeys, i);
+        int agentID = PyLong_AsLong(key);
+        if (agentID == agent.id) {
+
+            PyObject *value = PyDict_GetItem(object, key);
+            PyObject *key1 = Py_BuildValue("s", "prob");
+            PyObject *key2 = Py_BuildValue("s", "x");
+
+            double prob = PyFloat_AsDouble(PyDict_GetItem(value, key1));
+            double next_x = PyFloat_AsDouble(PyDict_GetItem(value, key2));
+
+            cout << "[PHONG] WorldModel::PhongAgentStep Found id: " << agentID << " prob: " << prob << " next_x: "<< next_x << endl;
+            break;
+        }
+    }
+
 }
 
-void WorldModel::CallPythonMethodWithNeighborAgents(AgentStruct &agent, std::vector<AgentStruct> neighborAgents){
-    // Using threads protection
-    PyGILState_STATE gstate;
-    gstate = PyGILState_Ensure();
-
-    if (MopedParams::PHONG_DEBUG) {
-        logi << "[PHONG] WorldModel::CallPythonMethodWithNeighborAgents" << endl;
-    }
-
-    // Building arguments
-    int predicted_agent_id = agent.id;
-    PyObject * agentDict = PyDict_New();
-
-    if (!agentDict) {
-        cout << "Unable to allocate memory for Python dict" << endl;
-        throw logic_error("Unable to allocate memory for Python dict");
-    }
-
-    for (const AgentStruct &tempAgent : neighborAgents) {
-        std::vector<COORD> hist = tempAgent.coordHistory.coord_history;
-        PyObject * listx = PyList_New(hist.size());
-        if (!listx) {
-            cout << "Unable to allocate memory for Python list" << endl;
-            throw logic_error("Unable to allocate memory for Python list");
-        }
-        PyObject * listy = PyList_New(hist.size());
-        if (!listy) {
-            throw logic_error("Unable to allocate memory for Python list");
-        }
-        for (unsigned int i = 0; i < hist.size(); i++) {
-            PyObject *x_pos = PyFloat_FromDouble(hist[i].x);
-            if (!x_pos) {
-                Py_DECREF(listx);
-                Py_DECREF(listy);
-                throw logic_error("Unable to allocated memory for python x.pos");
-            }
-            PyObject *y_pos = PyFloat_FromDouble(hist[i].y);
-            if (!y_pos) {
-                Py_DECREF(listx);
-                Py_DECREF(listy);
-                throw logic_error("Unable to allocated memory for python y.pos");
-            }
-            PyList_SetItem(listx, i, x_pos);
-            PyList_SetItem(listy, i, y_pos);
-        }
-        //PyObject *agentType = PyLong_FromLong(tempAgent.type);
-
-        PyObject *info_dict = Py_BuildValue("{s:O,s:O}", "x", listx, "y", listy);
-        PyDict_SetItem(agentDict, PyLong_FromLong(tempAgent.id), info_dict);
-
-//        Py_DECREF(agentType);
-//        Py_DECREF(info_dict);
-//        Py_DECREF(listx);
-//        Py_DECREF(listy);
-    }
-
-    PyObject *args = Py_BuildValue("(i,O)", predicted_agent_id, agentDict);
-    PyObject *result = PyEval_CallObject(pFunc, args);
-
-    double probability = PyFloat_AsDouble(PyTuple_GetItem(result, 0));
-    PyObject *predicted_x = PyTuple_GetItem(result, 1);
-    PyObject *predicted_y = PyTuple_GetItem(result, 2);
-
+//void WorldModel::CallPythonMethodWithNeighborAgents(AgentStruct &agent, PyObject *object){
+//    // Using threads protection
+//
+//    if (MopedParams::PHONG_DEBUG) {
+//        logi << "[PHONG] WorldModel::CallPythonMethodWithNeighborAgents with ref count: " << object->ob_refcnt << endl;
+//    }
+//
+//    // Building arguments
+//    int predicted_agent_id = agent.id;
+//
+//    PyObject *args = Py_BuildValue("(i,O)", predicted_agent_id, object);
+//    if (args == NULL) {
+//        std::cout << "WorldModel: Null" << std::endl;
+//    }
+//    PyObject *result = PyEval_CallObject(pFunc, args);
+//
+//    double probability = PyFloat_AsDouble(PyTuple_GetItem(result, 0));
+//    PyObject *predicted_x = PyTuple_GetItem(result, 1);
+//    PyObject *predicted_y = PyTuple_GetItem(result, 2);
+//
 //    cout << "WorldModel::WM: probability: " << probability << endl;
 //    cout << "WorldModel::WM: x: ";
 //    for (auto i = 0; i < PyList_Size(predicted_x); i++) {
@@ -389,18 +358,37 @@ void WorldModel::CallPythonMethodWithNeighborAgents(AgentStruct &agent, std::vec
 //        cout << PyFloat_AsDouble(PyList_GetItem(predicted_y, i)) << " ";
 //    }
 //    cout << endl;
+//
+//    Py_XDECREF(result);
+//    Py_XDECREF(args);
+//}
 
-    Py_XDECREF(result);
-    Py_XDECREF(args);
-    Py_XDECREF(agentDict);
+PyObject* WorldModel::CallPythonMethod(PyObject *agentDict){
+    // Using threads protection
 
-    PyGILState_Release(gstate);
+    if (MopedParams::PHONG_DEBUG) {
+        logi << "[PHONG] WorldModel::CallPythonMethod with ref count: " << agentDict->ob_refcnt << endl;
+        logi << "[PHONG] WorldModel::CallPythonMethod with pFunc count: " << pFunc->ob_refcnt << endl;
+    }
+
+    //PyObject *args = Py_BuildValue("(i,O)", 10, agentDict);
+    PyObject *args = PyTuple_Pack(1, agentDict);
+    PyObject *result = PyEval_CallObject(pFunc, args);
+
+    cout << "[PHONG] WorldModel::CallPythonMethod : dict " << PyDict_Check(result)
+         << " list: " << PyList_Check(result) << endl;
+
+    Py_DECREF(args);
+
+    return result;
+
 }
 
 void WorldModel::AgentStepCurVel(AgentStruct& agent, int step, double noise) {
-    if (ModelParams::PHONG_DEBUG) {
+    if (MopedParams::PHONG_DEBUG) {
         logi << "[PHONG] WorldModel::AgentStepCurVel [b] agent info before: ";
         agent.PhongAgentText(cout);
+        logi << endl;
     }
 
     if (noise != 0) {
